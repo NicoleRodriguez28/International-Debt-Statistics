@@ -1,0 +1,226 @@
+---
+title: "International Debt"
+author: "Nicole Rodriguez"
+date: "2024-03-19"
+output:
+  pdf_document:
+    toc: true
+  html_document:
+    theme: cosmo
+    highlight: monochrome
+    toc: true
+    code_folding: show
+---
+
+International debt data collected by [The World Bank](https://www.worldbank.org/en/programs/debt-statistics) was analyzed. Throughout this analysis, the amount of debt (in USD) owed by developing countries is viewed and compared. 
+
+```{r}
+# Load the required libraries
+library(tidyr)
+library(dplyr)
+library(DBI)
+library(RSQLite)
+
+# Read file from The World Bank
+data <- read.csv("international_debt.csv")
+
+# Rename columns 
+colnames(data) <- c("Country_Name",
+  "Country_Code",
+  "External_Debt",
+  "Debt_Value",
+  "Total_Percent_Employment",
+  "Annual_Population_Growth"
+)
+
+# Connect to SQLite database
+connection <- dbConnect(RSQLite::SQLite(), "imdb.db")
+
+# Write data to the database
+dbWriteTable(connection, "international_data", data, overwrite = TRUE)
+```
+
+
+Across `r paste(nrow(data))` countries, the top 10 countries with the highest external debt were extracted. 
+
+```{r}
+# View data structure
+head(data)
+summary(data)
+
+# Top 10 countries with the highest debt
+top_10_debt <- dbGetQuery(connection, "
+    SELECT Country_Name, External_debt, Debt_Value
+    FROM international_data
+    ORDER BY External_Debt DESC
+    LIMIT 10;
+")
+# Return results 
+print(top_10_debt)
+
+# Calculate average national debt
+avg_debt <- dbGetQuery(connection, 
+  "SELECT AVG(External_Debt)
+  FROM international_data;
+")
+# Return results
+print(avg_debt)
+
+```
+
+The country with the highest debt was China with a whopping total external debt of $464,366,000,000 for the year of 2022. This is significantly higher than all the other countries. The average external debt is approximately $28,280,221,492.
+
+```{r}
+# Load required packages 
+library(ggplot2)
+
+# Bar plot; top 10 countries by debt
+ggplot(top_10_debt, 
+       aes(x = Country_Name, y = External_Debt, fill = Debt_Value)) +
+  # Bar plot
+  geom_bar(stat = "identity") + 
+  # Add labels
+  labs(title = "Top 10 Counties by Debt", x = "Country", y = "Total External Debt") + 
+  # Additional plot structures/features 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+```
+
+Now we will look at the employment rates accross the countries and see if there is a correlation between these two factors. 
+
+```{r}
+# Top 10 countries with the highest percent of employment
+top_10_employed <- dbGetQuery(connection, "
+    SELECT Country_Name, ROUND(Total_Percent_Employment, 2) AS  Total_Percent_Employment
+    FROM international_data
+    ORDER BY Total_Percent_Employment DESC
+    LIMIT 10
+")
+# Return results 
+print(top_10_employed)
+
+# Average percent employment 
+avg_employment <- dbGetQuery(connection, 
+  "SELECT ROUND(AVG(Total_Percent_Employment), 2) AS Total_Percent_Employment
+  FROM international_data;
+")
+# Return results
+print(avg_employment)
+
+# Chinas employment percentage 
+china_employment <- dbGetQuery(connection, 
+  "SELECT Country_Name, ROUND(Total_Percent_Employment, 2) AS Total_Percent_Employment
+  FROM international_data
+  WHERE Country_Name = 'China';
+")
+# Return Results
+print(china_employment)
+```
+The top 10 countries with the highest employment percentages are: 
+
+- Qatar
+- Kuwait
+- Bahrain
+- Oman
+- United Arab Emirates	
+- Norway
+- Belarus
+- United States	
+- Saudi Arabia	
+- Macao SAR, China	
+
+
+Given that China's external debt surpasses all countries, I was curious about their employment rate and how it compared to the average employment rate. China's employment rate was `r paste(china_employment)` which isn't far from the overall average of `r paste(avg_employment)`. This made me wonder if there is any correlation between the total employment rate of countries and the total external debt they have. 
+
+```{r}
+# Load required libraries
+library(dplyr)
+
+# Debt/Employment variable
+empl_debt <- dbGetQuery(connection, "
+    SELECT External_Debt, Total_Percent_Employment
+    FROM international_data;
+")
+# Remove NA values
+empl_debt <- na.omit(empl_debt)
+
+# Correlation test
+empl_debt_corr <- cor(empl_debt$External_Debt, empl_debt$Total_Percent_Employment)
+
+# Return results
+print(empl_debt_corr)
+```
+The correlation coefficient of `r paste(round(empl_debt_corr, 2))` suggests a very weak positive correlation between the total external debt and the percent of employment within each country, indicating no meaningful connection between these two variables. 
+
+The annual population growth was then compared to the country's debt and another correlation test was performed between these two variables. 
+```{r}
+# Top 10 countries with highest population growth
+top_10_popul <- dbGetQuery(connection, "
+    SELECT Country_Name, External_Debt, ROUND(Annual_Population_Growth, 2) AS  Annual_Population_Growth
+    FROM international_data
+    ORDER BY Annual_Population_Growth DESC
+    LIMIT 10
+")
+# Return results 
+print(top_10_popul)
+
+# Debt/Population variable
+debt_popul <- dbGetQuery(connection, "
+    SELECT External_Debt, Annual_Population_Growth
+    FROM international_data;
+")
+
+# Remove NA values
+debt_popul <- na.omit(debt_popul)
+
+# Correlation test
+debt_popul_corr <- cor(debt_popul$External_Debt, debt_popul$Annual_Population_Growth)
+# return results
+print(debt_popul_corr)
+
+```
+The top 10 countries with the highest population growth annually are:
+
+- Niger
+- Syrian Arab Republic	
+- Singapore	
+- Kazakhstan
+- Congo, Dem. Rep.	
+- Chad
+- Angola
+- Mali
+- Somalia
+- Uganda
+
+Given the correlation of `r paste(round(debt_popul_corr, 2))`, there is no correlation between population growth and the debt accumulated by country. 
+
+
+```{r}
+# Debt/Population variable
+debt_val <- dbGetQuery(connection, "
+    SELECT External_Debt, Debt_Value
+    FROM international_data;
+")
+
+# Remove NA values
+debt_val <- na.omit(debt_val)
+
+# Correlation test
+debt_val_corr <- cor(debt_val$External_Debt, debt_val$Debt_Value)
+# return results
+print(debt_val_corr)
+```
+```{r}
+# scatter plot; external debt by value
+ggplot(debt_val, 
+       aes(x = External_Debt, y = Debt_Value, color = External_Debt)) +
+  # scatter plot
+  geom_point() + 
+  # Add labels
+  labs(title = "External Debt by Value", x = "Total External Debt", y = "External Debt Value")
+
+# disconnect from database
+dbDisconnect(connection)
+
+```
+Here we can see a strong positive correlation between debt and debt value.
